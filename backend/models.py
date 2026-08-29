@@ -69,7 +69,8 @@ class SensorHealth(Base):
     __tablename__ = "sensor_health"
 
     id          = Column(Integer, primary_key=True, index=True)
-    sensor_name = Column(String(64), unique=True, nullable=False, index=True)
+    device_id   = Column(String(64), nullable=False, default="esp32-001", index=True)
+    sensor_name = Column(String(64), nullable=False, index=True)
     status      = Column(String(16), nullable=False, default="UNKNOWN")
     # ONLINE | OFFLINE | DEGRADED | UNKNOWN
 
@@ -78,8 +79,12 @@ class SensorHealth(Base):
     error_count = Column(Integer, default=0)
     updated_at  = Column(DateTime, default=utcnow, onupdate=utcnow)
 
+    __table_args__ = (
+        Index("ix_sensor_health_dev_sensor", "device_id", "sensor_name", unique=True),
+    )
+
     def __repr__(self):
-        return f"<SensorHealth {self.sensor_name}={self.status} last_seen={self.last_seen}>"
+        return f"<SensorHealth dev={self.device_id} {self.sensor_name}={self.status} last_seen={self.last_seen}>"
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +94,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id          = Column(Integer, primary_key=True, index=True)
+    device_id   = Column(String(64), nullable=True, default="esp32-001", index=True)
     timestamp   = Column(DateTime, default=utcnow, nullable=False, index=True)
 
     alert_type  = Column(String(32), nullable=False)
@@ -97,7 +103,7 @@ class Alert(Base):
     severity    = Column(String(16), nullable=False, default="WARNING")
     # INFO | WARNING | CRITICAL
 
-    sensor_name = Column(String(64), nullable=True)   # which sensor triggered
+    sensor_name = Column(String(64), nullable=True)   # which sensor/parameter triggered
     message     = Column(Text, nullable=False)
     value       = Column(Float, nullable=True)         # offending value if any
     threshold   = Column(Float, nullable=True)         # threshold that was breached
@@ -113,10 +119,11 @@ class Alert(Base):
     __table_args__ = (
         Index("ix_alerts_type_ts", "alert_type", "timestamp"),
         Index("ix_alerts_resolved", "is_resolved"),
+        Index("ix_alerts_device_ts", "device_id", "timestamp"),
     )
 
     def __repr__(self):
         return (
-            f"<Alert id={self.id} type={self.alert_type} "
+            f"<Alert id={self.id} dev={self.device_id} type={self.alert_type} "
             f"severity={self.severity} resolved={self.is_resolved}>"
         )

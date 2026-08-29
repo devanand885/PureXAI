@@ -90,11 +90,17 @@ def compute_overall_status(
 class ThresholdResult:
     def __init__(
         self,
+        tds_ppm: Optional[float],
+        turbidity_ntu: Optional[float],
+        temperature_c: Optional[float],
         tds_status: str,       tds_reason: str,
         turbidity_status: str, turbidity_reason: str,
         temperature_status: str, temperature_reason: str,
         overall_status: str,
     ):
+        self.tds_ppm             = tds_ppm
+        self.turbidity_ntu       = turbidity_ntu
+        self.temperature_c       = temperature_c
         self.tds_status          = tds_status
         self.tds_reason          = tds_reason
         self.turbidity_status    = turbidity_status
@@ -112,21 +118,23 @@ class ThresholdResult:
         return self.overall_status in (STATUS_WARNING, STATUS_UNSAFE)
 
     def alerts_to_fire(self) -> list[dict]:
-        """Returns list of alert dicts for any non-safe parameters."""
+        """Returns list of alert dicts with parameter, value, and threshold for any non-safe parameters."""
         alerts = []
         checks = [
-            ("tds",         self.tds_status,         self.tds_reason),
-            ("turbidity",   self.turbidity_status,   self.turbidity_reason),
-            ("temperature", self.temperature_status, self.temperature_reason),
+            ("tds",         self.tds_status,         self.tds_reason,         self.tds_ppm,        TDSThreshold.SAFE_MAX if self.tds_status == STATUS_WARNING else TDSThreshold.WARNING_MAX),
+            ("turbidity",   self.turbidity_status,   self.turbidity_reason,   self.turbidity_ntu,  TurbidityThreshold.SAFE_MAX if self.turbidity_status == STATUS_WARNING else TurbidityThreshold.WARNING_MAX),
+            ("temperature", self.temperature_status, self.temperature_reason, self.temperature_c, TemperatureThreshold.SAFE_MAX if (self.temperature_c is not None and self.temperature_c > TemperatureThreshold.SAFE_MAX) else TemperatureThreshold.SAFE_MIN),
         ]
         from config import SEVERITY_WARNING, SEVERITY_CRITICAL, ALERT_TYPE_THRESHOLD
-        for sensor, status, reason in checks:
+        for sensor, status, reason, val, thresh in checks:
             if status == STATUS_WARNING:
                 alerts.append({
                     "alert_type":  ALERT_TYPE_THRESHOLD,
                     "severity":    SEVERITY_WARNING,
                     "sensor_name": sensor,
                     "message":     reason,
+                    "value":       val,
+                    "threshold":   thresh,
                 })
             elif status == STATUS_UNSAFE:
                 alerts.append({
@@ -134,6 +142,8 @@ class ThresholdResult:
                     "severity":    SEVERITY_CRITICAL,
                     "sensor_name": sensor,
                     "message":     reason,
+                    "value":       val,
+                    "threshold":   thresh,
                 })
         return alerts
 
@@ -150,6 +160,9 @@ def evaluate_reading(
     overall           = compute_overall_status(tds_st, turb_st, temp_st)
 
     return ThresholdResult(
+        tds_ppm=tds_ppm,
+        turbidity_ntu=turbidity_ntu,
+        temperature_c=temperature_c,
         tds_status=tds_st,           tds_reason=tds_r,
         turbidity_status=turb_st,    turbidity_reason=turb_r,
         temperature_status=temp_st,  temperature_reason=temp_r,

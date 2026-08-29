@@ -51,6 +51,8 @@ async def receive_sensor_data(
         temperature_c=payload.temperature_c,
     )
 
+    device_id = payload.device_id or "esp32-001"
+
     # ── 2. Persist reading ────────────────────────────────────────────────
     reading = SensorReading(
         tds_ppm=payload.tds_ppm,
@@ -60,26 +62,26 @@ async def receive_sensor_data(
         turbidity_status=result.turbidity_status,
         temperature_status=result.temperature_status,
         overall_status=result.overall_status,
-        device_id=payload.device_id or "esp32-001",
-        ip_address=payload.ip_address or request.client.host,
+        device_id=device_id,
+        ip_address=payload.ip_address or (request.client.host if request.client else None),
     )
     db.add(reading)
     db.commit()
     db.refresh(reading)
 
     logger.info(
-        f"📥 Reading #{reading.id} | TDS={payload.tds_ppm} | "
+        f"📥 Reading #{reading.id} [{device_id}] | TDS={payload.tds_ppm} | "
         f"Turb={payload.turbidity_ntu} | Temp={payload.temperature_c} | "
         f"Status={result.overall_status}"
     )
 
     # ── 3. Update sensor health ───────────────────────────────────────────
     if payload.tds_ppm is not None:
-        update_sensor_health(db, "tds", value=payload.tds_ppm)
+        update_sensor_health(db, "tds", device_id=device_id, value=payload.tds_ppm)
     if payload.turbidity_ntu is not None:
-        update_sensor_health(db, "turbidity", value=payload.turbidity_ntu)
+        update_sensor_health(db, "turbidity", device_id=device_id, value=payload.turbidity_ntu)
     if payload.temperature_c is not None:
-        update_sensor_health(db, "temperature", value=payload.temperature_c)
+        update_sensor_health(db, "temperature", device_id=device_id, value=payload.temperature_c)
 
     # ── 4. Fire threshold alerts ──────────────────────────────────────────
     for alert_info in result.alerts_to_fire():
@@ -88,7 +90,10 @@ async def receive_sensor_data(
             alert_type=alert_info["alert_type"],
             severity=alert_info["severity"],
             sensor_name=alert_info["sensor_name"],
+            device_id=device_id,
             message=alert_info["message"],
+            value=alert_info.get("value"),
+            threshold=alert_info.get("threshold"),
             reading_id=reading.id,
         )
 

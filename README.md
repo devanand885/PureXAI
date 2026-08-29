@@ -1,71 +1,141 @@
 # PureXAI
 
-**PureXAI** is an IoT-based Water Quality Monitoring System that uses an ESP32 microcontroller with TDS, turbidity, and temperature sensors to monitor water quality in real time. Data is sent to a Python/FastAPI backend, stored in a database, analyzed for safety thresholds, and displayed on a Streamlit dashboard with AI-powered anomaly detection.
+**PUREXAI — An Explainable AI Framework for Intelligent Public Drinking Water Quality Monitoring and Predictive Maintenance**
 
 ---
 
-## Team
+## 👥 Team & Responsibilities
 
-| Member | Role |
-|--------|------|
-| **Barath** | Sensors + ESP32 + Hardware |
-| **Devanand** | Backend + Database + Alerts |
-| **Jai Surya** | Dashboard + AI + Analysis |
+| Team Member | Module | Key Responsibilities |
+| :--- | :--- | :--- |
+| **Barath** | **Hardware & ESP32** | TDS, Turbidity, DS18B20 Sensors, OLED Display, Buzzer & LEDs, Wi-Fi HTTP Transmission |
+| **Devanand** | **Backend & Database & Alerts** | FastAPI Backend, SQLite Database, Threshold Engine, Sensor Health & Disconnection Monitoring, REST APIs |
+| **Jai Surya** | **Dashboard & AI Analysis** | Streamlit UI, Live & Historical Visualizations, Anomaly Detection, Filter-Health Degradation, Maintenance Reports |
 
 ---
 
-## Project Structure
+## 🏛️ System Architecture
+
+```
+       [ ESP32 Microcontroller ]
+     (TDS + Turbidity + DS18B20)
+                  │
+                  ▼ HTTP / Wi-Fi  (POST /api/sensor-data)
+       ┌───────────────────────────────┐
+       │   FastAPI Backend Gateway     │
+       │  (Validation & Error Handling)│
+       └──────────────┬────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+ ┌───────────────┐          ┌──────────────────────┐
+ │ Threshold     │          │ Sensor Health &      │
+ │ Engine        │          │ Disconnection Monitor│
+ └──────┬────────┘          └──────────┬───────────┘
+        │                              │
+        ▼                              ▼
+ ┌─────────────────────────────────────────────────┐
+ │               SQLite Database                   │
+ │ (sensor_readings, sensor_health, alerts tables) │
+ └──────────────────────┬──────────────────────────┘
+                        │
+                        ▼ REST APIs (GET /api/...)
+ ┌─────────────────────────────────────────────────┐
+ │          Streamlit Dashboard + AI Engine        │
+ │ (Live Monitor, Risk Analysis, Maintenance Recs) │
+ └─────────────────────────────────────────────────┘
+```
+
+> **IMPORTANT ARCHITECTURAL ISOLATION**:
+> - ESP32 **never** connects directly to the database.
+> - Streamlit dashboard **never** connects directly to the database.
+> - The **FastAPI Backend** acts as the single source of truth and communication gateway.
+
+---
+
+## 📁 Repository Structure
 
 ```
 PureXAI/
-├── backend/         # Python/FastAPI backend (Devanand)
-│   ├── main.py
-│   ├── database.py
-│   ├── models.py
-│   ├── schemas.py
-│   ├── config.py
-│   ├── requirements.txt
+├── backend/                  # FastAPI Backend (Devanand)
+│   ├── main.py               # Application entry point + APScheduler
+│   ├── database.py           # SQLAlchemy SQLite engine (WAL mode)
+│   ├── models.py             # ORM models (SensorReading, SensorHealth, Alert)
+│   ├── schemas.py            # Pydantic schemas (inbound/outbound)
+│   ├── config.py             # Central thresholds, timeouts, and constants
+│   ├── requirements.txt      # Python dependencies
+│   ├── test_simulation.py    # Complete automated simulated test suite
 │   ├── routers/
-│   │   ├── esp32.py
-│   │   ├── dashboard.py
-│   │   └── alerts.py
-│   ├── services/
-│   │   ├── threshold.py
-│   │   ├── sensor_health.py
-│   │   ├── alert_service.py
-│   │   └── disconnection.py
-│   └── README.md
-└── README.md
+│   │   ├── esp32.py          # Ingestion (POST /api/sensor-data, GET /api/ping)
+│   │   ├── dashboard.py      # Analytics (live, history, status, health, stats)
+│   │   └── alerts.py         # Alert management (list, active, resolve)
+│   └── services/
+│       ├── threshold.py      # Safe/Warning/Unsafe evaluation logic
+│       ├── sensor_health.py  # 30s timeout & auto-recovery monitoring
+│       ├── alert_service.py  # Alert creation, deduplication & resolution
+│       └── disconnection.py  # ESP32 Wi-Fi drop detector
+├── esp32/
+│   └── README.md             # ESP32 integration guide (Barath)
+├── dashboard/
+│   └── README.md             # Streamlit dashboard guide (Jai Surya)
+├── ai/
+│   └── README.md             # AI / ML analysis guide (Jai Surya)
+├── data/
+│   └── purexai.db            # Local SQLite database (auto-generated)
+├── .env.example              # Environment variables template
+├── .gitignore
+└── README.md                 # Project root documentation
 ```
 
 ---
 
-## Quick Start (Backend)
+## ⚙️ Water Quality Thresholds
 
+All thresholds are centralized in `backend/config.py`:
+
+| Parameter | Unit | Safe Range | Warning Range | Unsafe Range |
+| :--- | :--- | :--- | :--- | :--- |
+| **TDS (Total Dissolved Solids)** | ppm | `< 300.0` | `300.0 – 600.0` | `> 600.0` |
+| **Turbidity** | NTU | `< 1.0` | `1.0 – 4.0` | `> 4.0` |
+| **Temperature** | °C | `10.0 – 25.0` | `5.0 – 10.0` or `25.0 – 35.0` | `< 5.0` or `> 35.0` |
+
+*Overall water-quality status is determined by the most severe individual parameter status.*
+
+---
+
+## 🚀 Quick Start — Running the Backend
+
+### 1. Install Dependencies
 ```bash
 cd backend
 pip install -r requirements.txt
-python main.py
-# API at http://localhost:8000
-# Docs at http://localhost:8000/docs
 ```
 
----
-
-## Sensors Used
-
-- **TDS Sensor** — Total Dissolved Solids (water purity)
-- **Turbidity Sensor** — Water clarity / cloudiness
-- **DS18B20** — Water temperature
-- **OLED Display** — Local real-time display on ESP32
-- **LEDs + Buzzer** — Local Safe/Warning/Unsafe indicators
+### 2. Start FastAPI Server
+```bash
+python main.py
+```
+- **API Base URL**: `http://localhost:8000`
+- **Interactive Swagger Documentation**: `http://localhost:8000/docs`
+- **ReDoc Documentation**: `http://localhost:8000/redoc`
 
 ---
 
-## Water Quality Thresholds
+## 🧪 Automated Testing with Simulated Data
 
-| Parameter | Safe | Warning | Unsafe |
-|-----------|------|---------|--------|
-| TDS | < 300 ppm | 300–600 ppm | > 600 ppm |
-| Turbidity | < 1 NTU | 1–4 NTU | > 4 NTU |
-| Temperature | 10–25°C | 5–35°C (edges) | < 5°C or > 35°C |
+Before connecting physical hardware, run the comprehensive simulation test suite:
+```bash
+cd backend
+python test_simulation.py
+```
+This tests:
+1. Server liveness (`GET /api/ping`)
+2. Payload validation (rejection of negative numbers, NaNs, malformed bodies)
+3. Safe water-quality ingestion
+4. Threshold violations (TDS, Turbidity, Temperature) and alert generation
+5. Alert deduplication (cooldown suppression)
+6. Sensor health tracking and 30-second offline timeout
+7. ESP32 disconnection detection (`DEVICE_OFFLINE`)
+8. Auto-recovery and alert auto-resolution
+9. Live readings, historical queries, status, sensor health, and 24h statistics
+10. Manual alert resolution (`PATCH /api/alerts/{id}/resolve`)

@@ -28,6 +28,7 @@ def _is_duplicate(
     db: Session,
     alert_type: str,
     sensor_name: Optional[str],
+    device_id: Optional[str] = "esp32-001",
 ) -> bool:
     """
     Returns True if an identical unresolved alert was created within the cooldown window.
@@ -41,6 +42,8 @@ def _is_duplicate(
             Alert.timestamp >= cutoff,
         )
     )
+    if device_id:
+        query = query.filter(Alert.device_id == device_id)
     if sensor_name:
         query = query.filter(Alert.sensor_name == sensor_name)
     return query.first() is not None
@@ -52,10 +55,10 @@ def _is_duplicate(
 
 def _send_notification(alert: Alert):
     """Send alert notification. Currently logs to console."""
-    icon = {"INFO": "ℹ️", "WARNING": "⚠️", "CRITICAL": "🚨"}.get(alert.severity, "📢")
+    icon = {"INFO": "[INFO]", "WARNING": "[WARNING]", "CRITICAL": "[CRITICAL]"}.get(alert.severity, "[ALERT]")
     logger.warning(
         f"{icon}  [{alert.severity}] {alert.alert_type} | "
-        f"Sensor: {alert.sensor_name or 'N/A'} | {alert.message}"
+        f"Device: {alert.device_id or 'N/A'} | Sensor: {alert.sensor_name or 'N/A'} | {alert.message}"
     )
 
 
@@ -69,6 +72,7 @@ def create_alert(
     severity: str,
     message: str,
     sensor_name: Optional[str] = None,
+    device_id: Optional[str] = "esp32-001",
     value: Optional[float] = None,
     threshold: Optional[float] = None,
     reading_id: Optional[int] = None,
@@ -79,13 +83,14 @@ def create_alert(
 
     Returns the created Alert, or None if deduplicated.
     """
-    if not skip_dedup and _is_duplicate(db, alert_type, sensor_name):
+    if not skip_dedup and _is_duplicate(db, alert_type, sensor_name, device_id=device_id):
         logger.debug(
-            f"Dedup: suppressed {alert_type}/{sensor_name} alert (within cooldown)"
+            f"Dedup: suppressed {alert_type}/{sensor_name} alert for {device_id} (within cooldown)"
         )
         return None
 
     alert = Alert(
+        device_id=device_id or "esp32-001",
         alert_type=alert_type,
         severity=severity,
         sensor_name=sensor_name,
@@ -124,21 +129,24 @@ def auto_resolve_sensor_alerts(
     db: Session,
     sensor_name: str,
     alert_type: str,
+    device_id: Optional[str] = "esp32-001",
 ) -> int:
     """
     Auto-resolve all open alerts for a sensor+type (e.g., when sensor comes back online).
     Returns number of alerts resolved.
     """
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    alerts = (
+    query = (
         db.query(Alert)
         .filter(
             Alert.sensor_name == sensor_name,
             Alert.alert_type == alert_type,
             Alert.is_resolved == False,          # noqa: E712
         )
-        .all()
     )
+    if device_id:
+        query = query.filter(Alert.device_id == device_id)
+    alerts = query.all()
     for a in alerts:
         a.is_resolved = True
         a.resolved_at = now

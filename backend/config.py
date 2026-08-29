@@ -36,8 +36,8 @@ class TemperatureThreshold:
 SENSOR_OFFLINE_THRESHOLD_SECONDS: int = 30   # seconds of silence → OFFLINE
 HEALTH_CHECK_INTERVAL_SECONDS: int = 15      # how often background task runs
 
-# Known sensor IDs — can be extended
-KNOWN_SENSORS = ["tds", "turbidity", "temperature", "oled"]
+# Known active water-quality sensors reporting numeric data
+KNOWN_SENSORS = ["tds", "turbidity", "temperature"]
 
 
 # ---------------------------------------------------------------------------

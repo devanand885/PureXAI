@@ -189,6 +189,21 @@ def get_stats(db: Session = Depends(get_db)):
     )
 
     avg_tds, avg_turb, avg_temp, count_24h, safe_n, warn_n, unsafe_n = row
+    safe_count = int(safe_n or 0)
+    warning_count = int(warn_n or 0)
+    unsafe_count = int(unsafe_n or 0)
+
+    # Active unresolved alerts count
+    from models import Alert
+    active_alerts_count = (
+        db.query(func.count(Alert.id))
+        .filter(Alert.is_resolved == False)  # noqa: E712
+        .scalar() or 0
+    )
+
+    # Device online status
+    online = is_device_online(db)
+    device_status_str = "ONLINE" if online else "OFFLINE"
 
     def pct(n, total):
         if total and total > 0:
@@ -198,10 +213,15 @@ def get_stats(db: Session = Depends(get_db)):
     return StatsOut(
         total_readings=total_readings,
         readings_today=readings_today,
-        avg_tds_24h=round(avg_tds, 2) if avg_tds else None,
-        avg_turbidity_24h=round(avg_turb, 2) if avg_turb else None,
-        avg_temperature_24h=round(avg_temp, 2) if avg_temp else None,
-        safe_pct_24h=pct(safe_n, count_24h),
-        warning_pct_24h=pct(warn_n, count_24h),
-        unsafe_pct_24h=pct(unsafe_n, count_24h),
+        avg_tds_24h=round(avg_tds, 2) if avg_tds is not None else None,
+        avg_turbidity_24h=round(avg_turb, 2) if avg_turb is not None else None,
+        avg_temperature_24h=round(avg_temp, 2) if avg_temp is not None else None,
+        safe_count_24h=safe_count,
+        warning_count_24h=warning_count,
+        unsafe_count_24h=unsafe_count,
+        safe_pct_24h=pct(safe_count, count_24h),
+        warning_pct_24h=pct(warning_count, count_24h),
+        unsafe_pct_24h=pct(unsafe_count, count_24h),
+        active_alerts_count=active_alerts_count,
+        device_status=device_status_str,
     )

@@ -32,9 +32,10 @@ def list_alerts(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=500),
+    device_id: Optional[str] = Query(None, description="Filter by device ID (e.g. esp32-001)"),
     alert_type: Optional[str] = Query(None, description="Filter by alert_type (e.g. THRESHOLD)"),
     severity: Optional[str] = Query(None, description="Filter by severity: INFO/WARNING/CRITICAL"),
-    sensor_name: Optional[str] = Query(None, description="Filter by sensor name"),
+    sensor_name: Optional[str] = Query(None, description="Filter by sensor/parameter name"),
     is_resolved: Optional[bool] = Query(None, description="True = show only resolved, False = only active"),
     start_time: Optional[datetime] = Query(None, description="Filter: start timestamp"),
     end_time: Optional[datetime] = Query(None, description="Filter: end timestamp"),
@@ -42,6 +43,8 @@ def list_alerts(
     """Returns a paginated, filterable list of all alerts."""
     query = db.query(Alert)
 
+    if device_id:
+        query = query.filter(Alert.device_id == device_id)
     if alert_type:
         query = query.filter(Alert.alert_type == alert_type)
     if severity:
@@ -80,9 +83,12 @@ def list_active_alerts(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
     per_page: int = Query(100, ge=1, le=500),
+    device_id: Optional[str] = Query(None, description="Filter by device ID"),
 ):
     """Returns all alerts that have not been resolved yet."""
     query = db.query(Alert).filter(Alert.is_resolved == False)   # noqa: E712
+    if device_id:
+        query = query.filter(Alert.device_id == device_id)
     total = query.count()
     records = (
         query.order_by(Alert.timestamp.desc())

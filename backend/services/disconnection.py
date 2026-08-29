@@ -26,7 +26,7 @@ logger = logging.getLogger("purexai.disconnection")
 _device_was_online: bool = True
 
 
-def run_disconnection_check():
+def run_disconnection_check(device_id: str = "esp32-001"):
     """
     Background job — called by APScheduler.
 
@@ -44,7 +44,10 @@ def run_disconnection_check():
         # Consider device online if ANY sensor reported recently
         recent = (
             db.query(SensorHealth)
-            .filter(SensorHealth.last_seen >= cutoff)
+            .filter(
+                SensorHealth.device_id == device_id,
+                SensorHealth.last_seen >= cutoff,
+            )
             .first()
         )
         device_online = recent is not None
@@ -52,7 +55,7 @@ def run_disconnection_check():
         if not device_online and _device_was_online:
             # Device just went offline → fire DEVICE_OFFLINE alert
             logger.error(
-                f"🔴 ESP32 device OFFLINE — no data received for "
+                f"[DISCONNECTED] ESP32 device '{device_id}' OFFLINE — no data received for "
                 f">{SENSOR_OFFLINE_THRESHOLD_SECONDS}s"
             )
             create_alert(
@@ -60,8 +63,9 @@ def run_disconnection_check():
                 alert_type=ALERT_TYPE_DEVICE_OFFLINE,
                 severity=SEVERITY_CRITICAL,
                 sensor_name="esp32",
+                device_id=device_id,
                 message=(
-                    f"ESP32 device has gone offline. "
+                    f"ESP32 device '{device_id}' has gone offline. "
                     f"No sensor data received for >{SENSOR_OFFLINE_THRESHOLD_SECONDS} seconds. "
                     f"Check power supply, Wi-Fi connection, and firmware."
                 ),
@@ -70,14 +74,15 @@ def run_disconnection_check():
 
         elif device_online and not _device_was_online:
             # Device just came back online → auto-resolve and log recovery
-            logger.info("🟢 ESP32 device back ONLINE")
-            auto_resolve_sensor_alerts(db, "esp32", ALERT_TYPE_DEVICE_OFFLINE)
+            logger.info(f"[RECONNECTED] ESP32 device '{device_id}' back ONLINE")
+            auto_resolve_sensor_alerts(db, "esp32", ALERT_TYPE_DEVICE_OFFLINE, device_id=device_id)
             create_alert(
                 db,
                 alert_type=ALERT_TYPE_SENSOR_RECOVERED,
                 severity=SEVERITY_INFO,
                 sensor_name="esp32",
-                message="ESP32 device has reconnected and is sending data.",
+                device_id=device_id,
+                message=f"ESP32 device '{device_id}' has reconnected and is sending data.",
                 skip_dedup=True,
             )
             _device_was_online = True
